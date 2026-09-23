@@ -1,0 +1,6 @@
+{
+  "name": "SubGreek Studio - SRT Translator & AI Studio Companion",
+  "description": "Επαγγελματική μετάφραση αγγλικών υποτίτλων (.srt) σε φυσικά ελληνικά με ακριβείς χρονισμούς μέσω του Google AI Studio Chat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
