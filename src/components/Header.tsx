@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
               target="_blank"
               rel="noopener noreferrer"
               className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition-colors"
-              title="Άνοιγμα του δωρεάν Google AI Studio Chat"
+              title="Άνοιγμα Google AI Studio Chat"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Google AI Studio Chat</span>

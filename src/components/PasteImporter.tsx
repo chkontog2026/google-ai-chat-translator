@@ -1,269 +1,86 @@
 import React, { useState } from 'react';
-import {
-  ClipboardPaste,
-  Wrench,
-  CheckCircle2,
-  AlertTriangle,
-  ArrowRight,
-  Sparkles,
-  RefreshCw,
-} from 'lucide-react';
-import { SubtitleCue } from '../types/subtitle';
-import { mergeOriginalAndTranslation } from '../utils/srtParser';
-import { SAMPLE_GREEK_SRT } from '../utils/sampleData';
+import type { SubtitleCue, PromptConfig } from '../types/subtitle';
+import { analyzeTranslation, applyTranslation, getBatch, requestId, type ImportPlan } from '../utils/translationWorkflow';
+import { downloadSubtitleFile } from '../utils/srtParser';
 
-interface PasteImporterProps {
+interface Props {
   cues: SubtitleCue[];
   setCues: (cues: SubtitleCue[]) => void;
+  config: PromptConfig;
+  inputText: string;
+  setInputText: (text: string) => void;
   onProceedToEditor: () => void;
+  onRepair: () => void;
 }
 
-export const PasteImporter: React.FC<PasteImporterProps> = ({
-  cues,
-  setCues,
-  onProceedToEditor,
-}) => {
-  const [inputText, setInputText] = useState('');
-  const [importReport, setImportReport] = useState<{
-    repairedCount: number;
-    matchedCount: number;
-    unmatchedCount: number;
-  } | null>(null);
-
-  const handleProcessImport = (text: string, andProceed = false) => {
-    if (!text.trim()) return;
-
-    const { mergedCues, repairedCount, matchedCount, unmatchedCount } =
-      mergeOriginalAndTranslation(cues, text);
-
-    setCues(mergedCues);
-    setImportReport({
-      repairedCount,
-      matchedCount,
-      unmatchedCount,
-    });
-
-    if (andProceed) {
-      onProceedToEditor();
-    }
+export function PasteImporter({ cues, setCues, config, inputText, setInputText, onProceedToEditor, onRepair }: Props) {
+  const [preview, setPreview] = useState<{ plan: ImportPlan; source: SubtitleCue[]; raw: string; token: string } | null>(null);
+  const [overwrite, setOverwrite] = useState(false);
+  const [message, setMessage] = useState('');
+  const batch = getBatch(cues, config);
+  const token = requestId(cues, batch.targets);
+  const plan = preview?.plan;
+  const current = preview && preview.source === cues && preview.raw === inputText && preview.token === token;
+  const existing = new Map(cues.map(c => [c.id, c]));
+  const applicable = plan?.proposals.filter(p => overwrite || !existing.get(p.id)?.translatedText?.trim()).length || 0;
+  const analyze = () => {
+    setMessage('');
+    setPreview({ plan: analyzeTranslation(cues, inputText, batch.targets, config.maxCharsPerLine), source: cues, raw: inputText, token });
   };
-
-  const handleUseSampleGreek = () => {
-    setInputText(SAMPLE_GREEK_SRT);
-    handleProcessImport(SAMPLE_GREEK_SRT, false);
+  const apply = () => {
+    if (!current || !plan) return;
+    setCues(applyTranslation(cues, plan, overwrite));
+    setMessage(`Εφαρμόστηκαν ${applicable} μεταφράσεις. Οι αρχικοί χρόνοι και οι υπόλοιπες μεταφράσεις διατηρήθηκαν.`);
+    setPreview(null);
   };
-
-  const translatedCount = cues.filter((c) => !!c.translatedText?.trim()).length;
-
-  return (
-    <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-white">
-              Βήμα 3: Επικόλληση Μετάφρασης από το Google AI Studio
-            </h2>
-            <p className="text-sm text-slate-400 mt-1">
-              Αντιγράψτε την απάντηση του Gemini από το Google AI Studio Chat και επικολλήστε την εδώ.
-              Ο έξυπνος μηχανισμός <strong>Auto-Repair</strong> θα συσχετίσει αυτόματα τους υποτίτλους με τους αρχικούς χρονισμούς.
-            </p>
-          </div>
-
-          <button
-            onClick={handleUseSampleGreek}
-            className="px-3.5 py-2 text-xs font-medium text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition-colors flex items-center gap-2 shrink-0 cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>Δοκιμή με Έτοιμο Ελληνικό Δείγμα</span>
-          </button>
-        </div>
+  return <div className="space-y-5">
+    <section className="panel space-y-3">
+      <h2 className="text-lg font-semibold">Βήμα 3: Έλεγχος απάντησης</h2>
+      <p className="text-sm text-slate-300">Επικολλήστε την πλήρη απάντηση JSON για το μέρος {batch.index + 1}/{batch.total}. Η εφαρμογή ελέγχει το αρχείο, τα αναγνωριστικά και τις ελλείψεις πριν εφαρμόσει αλλαγές.</p>
+      <p className="text-xs text-amber-300">Για παλιό ελληνικό SRT: ανακτώνται μόνο μοναδικές αντιστοιχίσεις με ακριβώς ίδιους χρόνους. Όλες παραμένουν σημειωμένες για έλεγχο νοήματος.</p>
+      {!cues.length && <p role="alert" className="text-amber-300">Φορτώστε πρώτα το αρχικό αγγλικό SRT στο Βήμα 1.</p>}
+      <label className="block text-sm" htmlFor="ai-output-paste">Απάντηση AI Studio ή παλιό ελληνικό SRT</label>
+      <textarea id="ai-output-paste" rows={10} value={inputText} onChange={e => setInputText(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 font-mono text-xs" placeholder='{"requestId":"...","translations":[{"id":1,"text":"..."}]}' />
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-sm">Φόρτωση απάντησης <input aria-label="Φόρτωση απάντησης" type="file" accept=".srt,.json,.txt" onChange={async e => {
+          const file = e.target.files?.[0];
+          if (file) try { setInputText(await file.text()); setPreview(null); setMessage(''); } catch { setMessage('Δεν ήταν δυνατή η ανάγνωση του αρχείου.'); }
+          e.target.value = '';
+        }} className="block text-xs mt-1" /></label>
+        <button className="primary" disabled={!cues.length || !inputText.trim()} onClick={analyze}>Έλεγχος απάντησης</button>
+        <button className="secondary" onClick={() => { setInputText(''); setPreview(null); setMessage(''); }}>Καθαρισμός πεδίου</button>
       </div>
-
-      {/* Main Paste Box */}
-      <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <label htmlFor="ai-output-paste" className="text-sm font-medium text-slate-200 flex items-center gap-2">
-            <ClipboardPaste className="w-4 h-4 text-amber-400" />
-            <span>Επικολλήστε εδώ το κείμενο που έδωσε το AI Studio Chat:</span>
-          </label>
-          <span className="text-xs text-slate-400 font-mono">
-            {inputText.length > 0 ? `${inputText.length} χαρακτήρες` : 'Ctrl+V'}
-          </span>
-        </div>
-
-        <textarea
-          id="ai-output-paste"
-          rows={10}
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="1&#10;00:00:01,200 --> 00:00:03,800&#10;Ελληνικό κείμενο υπότιτλου...&#10;&#10;2&#10;00:00:04,100 --> 00:00:06,450&#10;Επόμενη ατάκα..."
-          className="w-full font-mono text-xs bg-slate-950 border border-slate-700/80 rounded-lg p-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500 transition-colors resize-none leading-relaxed"
-        />
-
-        {/* Helper bar when text is present */}
-        {inputText.trim().length > 0 && (
-          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between gap-3 text-xs text-amber-300">
-            <span className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                Επικολλήσατε επιτυχώς το κείμενο ({inputText.length.toLocaleString()} χαρακτήρες). Πατήστε το κουμπί <strong>«Εφαρμογή & Μετάβαση στο Βήμα 4»</strong> για να προχωρήσετε!
-              </span>
-            </span>
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-          <div className="text-xs text-slate-400">
-            * Ακόμη κι αν το AI άλλαξε στιγμιαία τη στίξη ή έβαλε αριθμό και χρόνο στην ίδια γραμμή, το σύστημα τα διορθώνει αυτόματα.
-          </div>
-
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
-            {inputText && (
-              <button
-                onClick={() => {
-                  setInputText('');
-                  setImportReport(null);
-                }}
-                className="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
-              >
-                Καθαρισμός
-              </button>
-            )}
-
-            {/* Secondary: Preview here */}
-            <button
-              onClick={() => handleProcessImport(inputText, false)}
-              disabled={!inputText.trim()}
-              className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              title="Ελέγξτε την ευθυγράμμιση σε αυτή τη σελίδα"
-            >
-              <Wrench className="w-4 h-4 text-amber-400" />
-              <span>Μόνο Ευθυγράμμιση</span>
-            </button>
-
-            {/* Primary: Apply and Go to Step 4 */}
-            <button
-              onClick={() => handleProcessImport(inputText, true)}
-              disabled={!inputText.trim()}
-              className="flex-1 sm:flex-none px-6 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 cursor-pointer scale-100 hover:scale-[1.02]"
-            >
-              <Wrench className="w-4 h-4 text-slate-950" />
-              <span>Εφαρμογή & Μετάβαση στον Editor (Βήμα 4)</span>
-              <ArrowRight className="w-4 h-4 text-slate-950" />
-            </button>
-          </div>
-        </div>
+    </section>
+    {message && <p role="status" className="panel text-emerald-300">{message}</p>}
+    {plan && <section className="panel space-y-4">
+      <h3 className="font-semibold">Αποτελέσματα ελέγχου — {plan.format === 'json' ? 'Απάντηση JSON' : 'Ανάκτηση παλιού SRT'}</h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <p>Παραλήφθηκαν: <strong>{plan.received}</strong></p>
+        <p>Προτάσεις εισαγωγής: <strong>{plan.proposals.length}</strong></p>
+        <p>Απορρίφθηκαν: <strong>{plan.rejected}</strong></p>
+        <p>Μη έγκυροι χρόνοι: <strong>{plan.invalidTimes}</strong></p>
       </div>
-
-      {/* Import Status & Report */}
-      {importReport && (
-        <div className="bg-slate-900/80 border border-emerald-500/30 rounded-xl p-5 space-y-4 shadow-lg shadow-emerald-500/5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-              <div>
-                <h3 className="text-sm font-semibold text-white">Επιτυχής Ευθυγράμμιση & Φόρτωση!</h3>
-                <p className="text-xs text-slate-400">
-                  Βρέθηκαν {importReport.matchedCount} υπότιτλοι έτοιμοι για έλεγχο και εξαγωγή.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={onProceedToEditor}
-              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
-            >
-              <span>Μετάβαση στο Βήμα 4: Έλεγχος & Video Sync</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-              <div className="text-slate-400 mb-1">Μεταφρασμένοι Υπότιτλοι</div>
-              <div className="text-lg font-bold text-emerald-400 font-mono">
-                {importReport.matchedCount} / {cues.length}
-              </div>
-            </div>
-
-            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-              <div className="text-slate-400 mb-1">Ανακτημένοι Χρονισμοί</div>
-              <div className="text-lg font-bold text-amber-400 font-mono">
-                {cues.length} (100% ακρίβεια)
-              </div>
-            </div>
-
-            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-              <div className="text-slate-400 mb-1">Υπόλοιπο χωρίς μετάφραση</div>
-              <div className={`text-lg font-bold font-mono ${importReport.unmatchedCount > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
-                {importReport.unmatchedCount}
-              </div>
-            </div>
-          </div>
-
-          {importReport.unmatchedCount > 0 && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>
-                Εντοπίστηκαν {importReport.unmatchedCount} υπότιτλοι που δεν μεταφράστηκαν. Μπορείτε να τους συμπληρώσετε χειροκίνητα στο Βήμα 4 ή να επικολλήσετε το υπόλοιπο μέρος.
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Quick Preview Table of Merged Cues */}
-      {translatedCount > 0 && (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-slate-300">
-              Γρήγορη προεπισκόπηση πρώτων ευθυγραμμισμένων υποτίτλων:
-            </h4>
-            <span className="text-xs text-slate-400 font-mono">
-              {translatedCount} από {cues.length} μεταφρασμένοι
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            {cues.slice(0, 4).map((cue) => (
-              <div
-                key={cue.id}
-                className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-slate-950/70 border border-slate-800 rounded-lg text-xs font-mono"
-              >
-                <div>
-                  <div className="text-[10px] text-slate-400 mb-1 flex items-center justify-between">
-                    <span className="text-amber-400 font-bold">#{cue.id} EN (Αγγλικά)</span>
-                    <span>{cue.startTime} → {cue.endTime}</span>
-                  </div>
-                  <div className="text-slate-300 whitespace-pre-wrap">{cue.originalText}</div>
-                </div>
-
-                <div className="border-t md:border-t-0 md:border-l border-slate-800 pt-2 md:pt-0 md:pl-3">
-                  <div className="text-[10px] text-emerald-400 mb-1 flex items-center justify-between font-bold">
-                    <span>EL (Ελληνικά)</span>
-                    <span className="font-normal text-slate-400">
-                      {cue.translatedText ? `${cue.translatedText.length} χαρακτήρες` : 'Κενό'}
-                    </span>
-                  </div>
-                  <div className="text-emerald-300 whitespace-pre-wrap">
-                    {cue.translatedText || <span className="text-slate-600 italic">Χωρίς μετάφραση</span>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="pt-2 flex justify-end">
-            <button
-              onClick={onProceedToEditor}
-              className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold flex items-center gap-2 shadow-md shadow-amber-500/20 cursor-pointer"
-            >
-              <span>Μετάβαση στον Πλήρη Επεξεργαστή & Συγχρονισμό Video</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <p className="text-sm text-amber-300">{plan.missingIds.length} εγγραφές χωρίς αποδεκτή απάντηση {plan.format === 'json' ? 'στο ζητούμενο μέρος' : 'και χωρίς προηγούμενη μετάφραση'}. {plan.proposals.filter(p => p.warnings.length).length} προτάσεις με προειδοποιήσεις.</p>
+      {plan.missingIds.length > 0 && <p className="text-xs break-words">ID: {plan.missingIds.slice(0, 60).join(', ')}{plan.missingIds.length > 60 ? '…' : ''}</p>}
+      {plan.issues.length > 0 && <details open><summary className="text-amber-300 cursor-pointer">Προβλήματα ({plan.issues.length})</summary><ul className="mt-2 text-xs space-y-1 max-h-48 overflow-auto">{plan.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul></details>}
+      <details><summary className="cursor-pointer">Προεπισκόπηση αντιστοίχισης ({plan.proposals.length})</summary>
+        <div className="max-h-80 overflow-auto space-y-3 mt-3">{plan.proposals.map(p => <div key={p.id} className="border border-slate-700 rounded-lg p-3 text-xs space-y-1">
+          <strong>#{p.id} • {existing.get(p.id)?.startTime}</strong>
+          <p className="whitespace-pre-wrap text-slate-400">{existing.get(p.id)?.originalText}</p>
+          <p className="whitespace-pre-wrap text-emerald-300">{p.text}</p>
+          <p className="text-amber-300">{p.warnings.join(' • ')}</p>
+        </div>)}</div>
+      </details>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)} />Αντικατάσταση υπαρχουσών μεταφράσεων στις προτεινόμενες εγγραφές</label>
+      {!current && <p className="text-amber-300 text-sm">Τα δεδομένα άλλαξαν. Πατήστε ξανά «Έλεγχος απάντησης».</p>}
+      <div className="flex flex-wrap gap-3">
+        <button className="primary" disabled={!current || !applicable} onClick={apply}>Εφαρμογή {applicable} μεταφράσεων</button>
+        <button className="secondary" onClick={() => downloadSubtitleFile(JSON.stringify(plan, null, 2), 'translation-report.json')}>Λήψη αναφοράς ελέγχου</button>
+      </div>
+    </section>}
+    <div className="flex flex-wrap gap-3">
+      <button className="secondary" disabled={!cues.length} onClick={onRepair}>Prompt διόρθωσης / ελλείψεων</button>
+      <button className="primary" disabled={!cues.length} onClick={onProceedToEditor}>Μετάβαση στον Editor</button>
     </div>
-  );
-};
+  </div>;
+}

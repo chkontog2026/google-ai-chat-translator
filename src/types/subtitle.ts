@@ -8,6 +8,7 @@ export interface SubtitleCue {
   translatedText?: string;
   hasWarning?: boolean;
   warningMessage?: string;
+  needsReview?: boolean;
 }
 
 export type TranslationTone = 'natural_spoken' | 'youth_slang' | 'formal_doc' | 'action_punchy' | 'humor_sitcom';
@@ -21,6 +22,7 @@ export interface PromptConfig {
   customGlossary: string; // e.g. "Shield: Ασπίδα\nTony: Τόνι"
   chunkSize: number; // 0 for all at once, or 50, 100, 200
   currentChunkIndex: number;
+  repairOnly?: boolean;
 }
 
 export interface ValidationReport {

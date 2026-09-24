@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search,
   Replace,
@@ -17,6 +17,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { SubtitleCue } from '../types/subtitle';
+import { qualityIssues } from '../utils/translationWorkflow';
 import { calculateCPS, parseSRT } from '../utils/srtParser';
 
 interface SubtitleEditorProps {
@@ -36,6 +37,8 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
   onOpenExport,
   maxCharsPerLine = 40,
 }) => {
+  const [pageIndex, setPageIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'missing' | 'warning'>('all');
@@ -60,25 +63,10 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
       const content = event.target?.result as string;
       try {
         const parsedEnglish = parseSRT(content, true);
-        const englishMapById = new Map<number, string>();
-        parsedEnglish.forEach((p) => {
-          if (p.id && p.originalText) {
-            englishMapById.set(p.id, p.originalText);
-          }
-        });
-
-        setCues((prev) =>
-          prev.map((cue, idx) => {
-            let orig = englishMapById.get(cue.id);
-            if (!orig && parsedEnglish[idx]?.originalText) {
-              orig = parsedEnglish[idx].originalText;
-            }
-            return {
-              ...cue,
-              originalText: orig || '',
-            };
-          })
-        );
+        setCues(prev => prev.map(cue => {
+          const matches = parsedEnglish.filter(p => p.startTime === cue.startTime && p.endTime === cue.endTime);
+          return matches.length === 1 ? { ...cue, originalText: matches[0].originalText, needsReview: true } : cue;
+        }));
       } catch (err) {
         console.error(err);
       }
@@ -96,13 +84,14 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
   // Replace all occurrences in translations
   const handleReplaceAll = () => {
     if (!searchQuery) return;
-    const regex = new RegExp(searchQuery, 'gi');
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(escaped, 'gi');
     setCues((prev) =>
       prev.map((cue) => {
         if (!cue.translatedText) return cue;
         return {
           ...cue,
-          translatedText: cue.translatedText.replace(regex, replaceQuery),
+          translatedText: cue.translatedText.replace(regex, () => replaceQuery),
         };
       })
     );
@@ -131,18 +120,22 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
         return !cue.translatedText || !cue.translatedText.trim();
       }
 
-      if (filterMode === 'warning') {
-        const text = cue.translatedText || '';
-        const lines = text.split('\n');
-        const hasLongLine = lines.some((l) => l.length > maxCharsPerLine);
-        const duration = cue.endSeconds - cue.startSeconds;
-        const cps = calculateCPS(text, duration);
-        return hasLongLine || cps > 21;
-      }
+      if (filterMode === 'warning') return qualityIssues(cue, maxCharsPerLine).length > 0;
 
       return true;
     });
   }, [cues, searchQuery, filterMode, maxCharsPerLine]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredCues.length / 50));
+  const currentPage = Math.min(pageIndex, pageCount - 1);
+  const visibleCues = filteredCues.slice(currentPage * 50, (currentPage + 1) * 50);
+  useEffect(() => { setPageIndex(0); }, [searchQuery, filterMode]);
+  useEffect(() => {
+    const selectedId = cues[activeCueIndex]?.id;
+    const position = filteredCues.findIndex(c => c.id === selectedId);
+    if (position >= 0) setPageIndex(Math.floor(position / 50));
+  }, [activeCueIndex]);
+  useEffect(() => { if (listRef.current) listRef.current.scrollTop = 0; }, [currentPage, searchQuery, filterMode]);
 
   // Overall stats
   const totalCues = cues.length;
@@ -192,7 +185,7 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            Έλεγχος ταχύτητας/ορίων
+            Χρειάζονται έλεγχο
           </button>
         </div>
 
@@ -287,13 +280,18 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
       )}
 
       {/* Subtitles List */}
-      <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <button className="secondary" disabled={currentPage === 0} onClick={() => setPageIndex(currentPage - 1)}>Προηγούμενη σελίδα</button>
+        <span>Σελίδα {currentPage + 1}/{pageCount} • {filteredCues.length} αποτελέσματα</span>
+        <button className="secondary" disabled={currentPage >= pageCount - 1} onClick={() => setPageIndex(currentPage + 1)}>Επόμενη σελίδα</button>
+      </div>
+      <div ref={listRef} className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
         {filteredCues.length === 0 ? (
           <div className="text-center py-12 bg-slate-900/30 border border-slate-800/80 rounded-xl text-slate-400 text-xs">
             Δεν βρέθηκαν υπότιτλοι με τα επιλεγμένα κριτήρια.
           </div>
         ) : (
-          filteredCues.map((cue, idx) => {
+          visibleCues.map((cue, idx) => {
             const isSelected = activeCueIndex === idx;
             const duration = cue.endSeconds - cue.startSeconds;
             const text = cue.translatedText || '';
@@ -356,6 +354,10 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
                   </div>
                 </div>
 
+                <div className="text-xs text-amber-300 mb-2 space-y-1">
+                  <p>{qualityIssues(cue, maxCharsPerLine).join(' • ')}</p>
+                  {cue.needsReview && <button className="secondary" onClick={e => { e.stopPropagation(); setCues(prev => prev.map(c => c.id === cue.id ? { ...c, needsReview: false } : c)); }}>Έλεγξα την αντιστοίχιση</button>}
+                </div>
                 {/* Content: 2-column side-by-side if original text exists, otherwise clean single-column Greek editor */}
                 {hasOriginalText ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
@@ -392,6 +394,7 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
                       </div>
 
                       <textarea
+                        aria-label={`Μετάφραση υποτίτλου ${cue.id}`}
                         rows={Math.max(2, lines.length)}
                         value={cue.translatedText || ''}
                         onChange={(e) => handleTextChange(cue.id, e.target.value)}
@@ -415,7 +418,8 @@ export const SubtitleEditor: React.FC<SubtitleEditorProps> = ({
                     </div>
 
                     <textarea
-                      rows={Math.max(2, lines.length)}
+                      aria-label={`Μετάφραση υποτίτλου ${cue.id}`}
+                        rows={Math.max(2, lines.length)}
                       value={cue.translatedText || ''}
                       onChange={(e) => handleTextChange(cue.id, e.target.value)}
                       placeholder="Πληκτρολογήστε ή επικολλήστε τη μετάφραση..."

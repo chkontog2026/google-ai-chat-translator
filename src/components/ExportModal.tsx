@@ -10,6 +10,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
+import { qualityIssues } from '../utils/translationWorkflow';
 import { SubtitleCue } from '../types/subtitle';
 import {
   cuesToSRT,
@@ -24,6 +25,7 @@ interface ExportModalProps {
   cues: SubtitleCue[];
   originalFileName: string;
   videoFileName?: string | null;
+  maxCharsPerLine?: number;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -32,8 +34,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   cues,
   originalFileName,
   videoFileName,
+  maxCharsPerLine = 38,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
   const [exportFormat, setExportFormat] = useState<'srt' | 'srt_bom' | 'vtt' | 'bilingual'>('srt');
   const [customFilename, setCustomFilename] = useState<string>('');
 
@@ -55,7 +59,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const baseName = computeBaseName();
   const ext = exportFormat === 'vtt' ? 'vtt' : 'srt';
   const suffix = exportFormat === 'bilingual' ? '_EL_EN' : '_EL';
-  const suggestedFilename = `${baseName}${suffix}.${ext}`;
+  const issueCount = cues.filter(c => qualityIssues(c, maxCharsPerLine).length > 0).length;
+  const suggestedFilename = `${baseName}${suffix}${issueCount ? '_DRAFT' : ''}.${ext}`;
   const finalFilename = customFilename.trim() || suggestedFilename;
 
   const getOutputContent = () => {
@@ -79,9 +84,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   };
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(currentContent);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    try {
+      await navigator.clipboard.writeText(currentContent);
+      setCopyError('');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch { setCopyError('Η αντιγραφή απέτυχε. Χρησιμοποιήστε τη λήψη αρχείου.'); }
   };
 
   const translatedCount = cues.filter((c) => !!c.translatedText?.trim()).length;
@@ -98,7 +106,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <div>
               <h3 className="text-base font-semibold text-white">Εξαγωγή Ελληνικών Υποτίτλων</h3>
               <p className="text-xs text-slate-400">
-                {translatedCount} από {cues.length} υπότιτλοι έτοιμοι για αποθήκευση
+                {translatedCount} από {cues.length} υπότιτλοι με συμπληρωμένη μετάφραση
               </p>
             </div>
           </div>
@@ -110,6 +118,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </button>
         </div>
 
+        {issueCount > 0 && <div role="alert" className="mx-5 mt-4 p-3 border border-amber-500/40 rounded-lg text-xs text-amber-300">
+          Πρόχειρη εξαγωγή: {cues.length - translatedCount} κενές μεταφράσεις και {issueCount} εγγραφές με εκκρεμότητες/προειδοποιήσεις. Οι κενές εμφανίζονται ως [Χωρίς μετάφραση]. Διατηρούνται όλες οι αρχικές εγγραφές και οι χρόνοι τους.
+        </div>}
         {/* Modal Body */}
         <div className="p-5 space-y-5 overflow-y-auto flex-1 text-xs">
           {/* Format selection cards */}
@@ -250,6 +261,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </div>
         </div>
 
+        {copyError && <p role="alert" className="px-5 text-xs text-amber-300">{copyError}</p>}
         {/* Modal Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3">
           <button

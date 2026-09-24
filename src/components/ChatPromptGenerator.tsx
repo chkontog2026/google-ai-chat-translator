@@ -11,6 +11,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { SubtitleCue, PromptConfig, TranslationTone } from '../types/subtitle';
+import { getBatch, qualityIssues } from '../utils/translationWorkflow';
 import { generateBatchPrompt, getToneDescription } from '../utils/promptGenerator';
 
 interface ChatPromptGeneratorProps {
@@ -27,12 +28,11 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
   onGoToImport,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Calculate chunks
-  const totalChunks = config.chunkSize > 0 && cues.length > config.chunkSize
-    ? Math.ceil(cues.length / config.chunkSize)
-    : 1;
+  const totalChunks = getBatch(cues, config).total;
 
   // Generate current prompt
   const { promptText, label, chunkCues } = useMemo(() => {
@@ -42,10 +42,11 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(promptText);
+      setCopyError('');
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
     } catch (e) {
-      console.error(e);
+      setCopyError('Δεν ήταν δυνατή η αντιγραφή. Επιλέξτε και αντιγράψτε το κείμενο του prompt χειροκίνητα.');
     }
   };
 
@@ -59,6 +60,7 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
 
   return (
     <div className="space-y-6">
+      {copyError && <p role="alert" className="text-amber-300 text-sm">{copyError}</p>}
       {/* Visual Workflow Explainer */}
       <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-900 border border-amber-500/30 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-3">
@@ -67,7 +69,7 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
             Πώς λειτουργεί μέσω του Google AI Studio Chat (Χωρίς API Key):
           </h2>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
           <div className="bg-slate-950/70 p-3.5 rounded-lg border border-slate-800 flex flex-col justify-between">
             <div>
@@ -76,11 +78,12 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
                 <span>Αντιγράψτε το Prompt</span>
               </div>
               <p className="text-slate-400 leading-relaxed">
-                Περιέχει αυστηρές οδηγίες διατήρησης χρονισμών, φυσικής ελληνικής γλώσσας και τις ατάκες σας.
+                Μεταφράζει το κείμενο ανά σταθερό αναγνωριστικό. Η εφαρμογή κρατά τους αρχικούς χρόνους.
               </p>
             </div>
             <button
               onClick={handleCopy}
+              disabled={!chunkCues.length}
               className={`mt-3 w-full py-1.5 px-3 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                 copied ? 'bg-emerald-500 text-slate-950' : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
               }`}
@@ -97,7 +100,7 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
                 <span>Άνοιγμα AI Studio Chat</span>
               </div>
               <p className="text-slate-400 leading-relaxed">
-                Επικολλήστε (Ctrl+V) στο Google AI Studio Chat (προτείνεται Gemini 1.5 Pro ή Flash) και πατήστε Run.
+                Επικολλήστε (Ctrl+V) στο Google AI Studio Chat και πατήστε Run.
               </p>
             </div>
             <a
@@ -115,10 +118,10 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
             <div>
               <div className="font-semibold text-amber-400 mb-1 flex items-center gap-1.5">
                 <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">3</span>
-                <span>Επικόλληση & Auto-Fix</span>
+                <span>Έλεγχος & Εφαρμογή</span>
               </div>
               <p className="text-slate-400 leading-relaxed">
-                Επικολλήστε την απάντηση στο Βήμα 3. Το σύστημα ανακτά αυτόματα τους αρχικούς χρονισμούς.
+                Επικολλήστε την απάντηση στο Βήμα 3, ελέγξτε την αναφορά και εφαρμόστε τις αποδεκτές εγγραφές.
               </p>
             </div>
             <button
@@ -222,7 +225,7 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
                   }
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="0">Όλοι οι υπότιτλοι (1 Prompt)</option>
+
                   <option value="50">50 υπότιτλοι ανά μέρος</option>
                   <option value="100">100 υπότιτλοι ανά μέρος</option>
                   <option value="150">150 υπότιτλοι ανά μέρος</option>
@@ -248,6 +251,11 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
         )}
       </div>
 
+      <label className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-xl p-4 text-sm">
+        <input type="checkbox" checked={!!config.repairOnly} onChange={e => setConfig({ ...config, repairOnly: e.target.checked })} />
+        Μόνο κενές εγγραφές και εγγραφές με προειδοποιήσεις στο επιλεγμένο μέρος
+      </label>
+      <p className="text-xs text-slate-400">Η απάντηση θα είναι JSON. Αντιγράψτε ολόκληρο το αποτέλεσμα στο Βήμα 3. Τα ✓ δείχνουν μέρη χωρίς κενά ή προειδοποιήσεις· ο γλωσσικός έλεγχος παραμένει απαραίτητος.</p>
       {/* Chunk navigation if chunking is enabled */}
       {totalChunks > 1 && (
         <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
@@ -268,7 +276,7 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                 }`}
               >
-                Μέρος {i + 1}
+                Μέρος {i + 1}{cues.slice(i * config.chunkSize, (i + 1) * config.chunkSize).every(c => qualityIssues(c, config.maxCharsPerLine).length === 0) ? ' ✓' : ''}
               </button>
             ))}
           </div>
@@ -286,6 +294,7 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
 
           <button
             onClick={handleCopy}
+              disabled={!chunkCues.length}
             className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
               copied
                 ? 'bg-emerald-500 text-slate-950'

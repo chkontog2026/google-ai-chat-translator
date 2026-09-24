@@ -6,18 +6,16 @@ import { SAMPLE_ENGLISH_SRT, SAMPLE_GREEK_SRT } from '../utils/sampleData';
 
 interface SrtUploaderProps {
   cues: SubtitleCue[];
-  setCues: (cues: SubtitleCue[]) => void;
+  onLoadSource: (cues: SubtitleCue[], name: string) => void;
   fileName: string;
-  setFileName: (name: string) => void;
   onProceed: () => void;
   onLoadFullSample: () => void;
 }
 
 export const SrtUploader: React.FC<SrtUploaderProps> = ({
   cues,
-  setCues,
+  onLoadSource,
   fileName,
-  setFileName,
   onProceed,
   onLoadFullSample,
 }) => {
@@ -34,8 +32,7 @@ export const SrtUploader: React.FC<SrtUploaderProps> = ({
         setParseError('Δεν βρέθηκαν έγκυροι υπότιτλοι .srt. Ελέγξτε τη μορφή του αρχείου.');
         return;
       }
-      setCues(parsed);
-      setFileName(name);
+      onLoadSource(parsed, name);
       setPasteText('');
     } catch (err: any) {
       setParseError(`Σφάλμα κατά την ανάγνωση: ${err.message || 'Μη έγκυρο αρχείο SRT'}`);
@@ -91,7 +88,7 @@ export const SrtUploader: React.FC<SrtUploaderProps> = ({
           <div>
             <h2 className="text-lg font-semibold text-white">Βήμα 1: Επιλογή Αγγλικών Υποτίτλων (.srt)</h2>
             <p className="text-sm text-slate-400 mt-1">
-              Ανεβάστε το αρχείο υποτίτλων στα Αγγλικά. Το εργαλείο θα αναλύσει τα timestamps και θα ετοιμάσει το εξειδικευμένο prompt για το δωρεάν <strong>Google AI Studio Chat</strong>.
+              Ανεβάστε το αρχείο υποτίτλων στα Αγγλικά. Το εργαλείο θα αναλύσει τα timestamps και θα ετοιμάσει το εξειδικευμένο prompt για το <strong>Google AI Studio Chat</strong>.
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">

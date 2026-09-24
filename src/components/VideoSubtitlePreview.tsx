@@ -16,6 +16,7 @@ import { secondsToTimecode } from '../utils/srtParser';
 interface VideoSubtitlePreviewProps {
   cues: SubtitleCue[];
   currentCueIndex: number;
+  seekRequest?: { time: number } | null;
   onSelectCue: (index: number) => void;
   activeTime: number;
   setActiveTime: React.Dispatch<React.SetStateAction<number>>;
@@ -26,6 +27,7 @@ interface VideoSubtitlePreviewProps {
 export const VideoSubtitlePreview: React.FC<VideoSubtitlePreviewProps> = ({
   cues,
   currentCueIndex,
+  seekRequest,
   onSelectCue,
   activeTime,
   setActiveTime,
@@ -46,13 +48,18 @@ export const VideoSubtitlePreview: React.FC<VideoSubtitlePreviewProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (seekRequest && videoRef.current) videoRef.current.currentTime = seekRequest.time;
+  }, [seekRequest]);
+  useEffect(() => () => { if (videoFileUrl) URL.revokeObjectURL(videoFileUrl); }, [videoFileUrl]);
+
   // Total duration from cues or video duration
   const maxCuesTime = cues.length > 0 ? cues[cues.length - 1].endSeconds + 2 : 60;
   const maxTime = videoDuration && videoDuration > 0 ? videoDuration : maxCuesTime;
 
   // Find active cue at current time
   const currentActiveCue = cues.find(
-    (c) => activeTime >= c.startSeconds && activeTime <= c.endSeconds
+    (c) => activeTime >= c.startSeconds && activeTime < c.endSeconds
   );
 
   // Simulated player tick if no video file loaded
@@ -74,7 +81,10 @@ export const VideoSubtitlePreview: React.FC<VideoSubtitlePreviewProps> = ({
   // Video time update sync
   const handleTimeUpdate = () => {
     if (videoRef.current) {
-      setActiveTime(videoRef.current.currentTime);
+      const time = videoRef.current.currentTime;
+      setActiveTime(time);
+      const index = cues.findIndex(c => time >= c.startSeconds && time < c.endSeconds);
+      if (index >= 0 && index !== currentCueIndex) onSelectCue(index);
     }
   };
 
@@ -138,6 +148,7 @@ export const VideoSubtitlePreview: React.FC<VideoSubtitlePreviewProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
+      setVideoDuration(null);
       setVideoFileUrl(url);
       setVideoFileName(file.name);
       onVideoLoaded?.(file.name);
@@ -182,6 +193,8 @@ export const VideoSubtitlePreview: React.FC<VideoSubtitlePreviewProps> = ({
             onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={handleLoadedMetadata}
             onEnded={() => setIsPlaying(false)}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
             className="w-full h-full object-contain"
             onClick={togglePlay}
           />
@@ -241,7 +254,7 @@ export const VideoSubtitlePreview: React.FC<VideoSubtitlePreviewProps> = ({
             title="Φορτώστε δικό σας βίντεο (MP4/MKV) από τον υπολογιστή για πραγματικό έλεγχο"
           >
             <Video className="w-3.5 h-3.5 text-amber-400" />
-            <span>{videoFileName ? 'Αλλαγή Βίντεο' : 'Φόρτωση Τοπικού Βίντεο'}</span>
+            <span>{videoFileUrl ? 'Αλλαγή Βίντεο' : 'Φόρτωση Τοπικού Βίντεο'}</span>
           </button>
         </div>
 
@@ -266,6 +279,7 @@ export const VideoSubtitlePreview: React.FC<VideoSubtitlePreviewProps> = ({
         {/* Scrubber timeline */}
         <div className="flex items-center gap-3">
           <input
+            aria-label="Χρόνος αναπαραγωγής"
             type="range"
             min="0"
             max={maxTime || 100}
@@ -280,6 +294,7 @@ export const VideoSubtitlePreview: React.FC<VideoSubtitlePreviewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2">
             <button
+              aria-label={isPlaying ? 'Παύση' : 'Αναπαραγωγή'}
               onClick={togglePlay}
               className="w-8 h-8 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center transition-colors cursor-pointer"
             >
