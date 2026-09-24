@@ -36,7 +36,7 @@ export function PasteImporter({ cues, setCues, config, inputText, setInputText, 
   return <div className="space-y-5">
     <section className="panel space-y-3">
       <h2 className="text-lg font-semibold">Βήμα 3: Έλεγχος απάντησης</h2>
-      <p className="text-sm text-slate-300">Επικολλήστε την πλήρη απάντηση JSON για το μέρος {batch.index + 1}/{batch.total}. Η εφαρμογή ελέγχει το αρχείο, τα αναγνωριστικά και τις ελλείψεις πριν εφαρμόσει αλλαγές.</p>
+      <p className="text-sm text-slate-300">Επικολλήστε την πλήρη απάντηση JSON {config.chunkSize === 0 ? 'για ολόκληρο το αρχείο' : `για το μέρος ${batch.index + 1}/${batch.total}`}. Η εφαρμογή ελέγχει το αρχείο, τα αναγνωριστικά και τις ελλείψεις πριν εφαρμόσει αλλαγές.</p>
       <p className="text-xs text-amber-300">Για παλιό ελληνικό SRT: ανακτώνται μόνο μοναδικές αντιστοιχίσεις με ακριβώς ίδιους χρόνους. Όλες παραμένουν σημειωμένες για έλεγχο νοήματος.</p>
       {!cues.length && <p role="alert" className="text-amber-300">Φορτώστε πρώτα το αρχικό αγγλικό SRT στο Βήμα 1.</p>}
       <label className="block text-sm" htmlFor="ai-output-paste">Απάντηση AI Studio ή παλιό ελληνικό SRT</label>
@@ -60,7 +60,7 @@ export function PasteImporter({ cues, setCues, config, inputText, setInputText, 
         <p>Απορρίφθηκαν: <strong>{plan.rejected}</strong></p>
         <p>Μη έγκυροι χρόνοι: <strong>{plan.invalidTimes}</strong></p>
       </div>
-      <p className="text-sm text-amber-300">{plan.missingIds.length} εγγραφές χωρίς αποδεκτή απάντηση {plan.format === 'json' ? 'στο ζητούμενο μέρος' : 'και χωρίς προηγούμενη μετάφραση'}. {plan.proposals.filter(p => p.warnings.length).length} προτάσεις με προειδοποιήσεις.</p>
+      <p className="text-sm text-amber-300">{plan.missingIds.length} εγγραφές χωρίς αποδεκτή απάντηση {plan.format === 'json' ? 'για τα ζητούμενα ID' : 'και χωρίς προηγούμενη μετάφραση'}. {plan.proposals.filter(p => p.warnings.length).length} προτάσεις με προειδοποιήσεις.</p>
       {plan.missingIds.length > 0 && <p className="text-xs break-words">ID: {plan.missingIds.slice(0, 60).join(', ')}{plan.missingIds.length > 60 ? '…' : ''}</p>}
       {plan.issues.length > 0 && <details open><summary className="text-amber-300 cursor-pointer">Προβλήματα ({plan.issues.length})</summary><ul className="mt-2 text-xs space-y-1 max-h-48 overflow-auto">{plan.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul></details>}
       <details><summary className="cursor-pointer">Προεπισκόπηση αντιστοίχισης ({plan.proposals.length})</summary>

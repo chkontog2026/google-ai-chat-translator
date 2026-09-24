@@ -34,7 +34,7 @@ ${config.preserveBrackets ? 'Μετάφρασε τις περιγραφές ήχ
 export function generateBatchPrompt(cues: SubtitleCue[], config: PromptConfig, chunkIndex: number, _totalChunks: number) {
   const batch = getBatch(cues, { ...config, currentChunkIndex: chunkIndex });
   const chunkCues = batch.targets;
-  const label = `Μέρος ${batch.index + 1} από ${batch.total} • ${chunkCues.length} εγγραφές${config.repairOnly ? ' για διόρθωση' : ''}`;
+  const label = `${config.chunkSize === 0 ? 'Ολόκληρο το αρχείο' : `Μέρος ${batch.index + 1} από ${batch.total}`} • ${chunkCues.length} εγγραφές${config.repairOnly ? ' για διόρθωση / συμπλήρωση' : ''}`;
   const targetIds = new Set(chunkCues.map(c => c.id));
   const contextIds = new Set<number>();
   cues.forEach((c, i) => {
@@ -47,5 +47,5 @@ export function generateBatchPrompt(cues: SubtitleCue[], config: PromptConfig, c
     translate: chunkCues.map(c => ({ id: c.id, original: c.originalText, durationSeconds: +(c.endSeconds - c.startSeconds).toFixed(3), ...(config.repairOnly ? { previousTranslation: c.translatedText || '', issues: qualityIssues(c, config.maxCharsPerLine) } : {}) })),
   };
   const example = JSON.stringify({ requestId: payload.requestId, translations: [{ id: chunkCues[0]?.id ?? 1, text: 'Ελληνική μετάφραση' }] });
-  return { chunkCues, label, promptText: chunkCues.length ? `${generateSystemInstructions(config)}\n\nΔεδομένα:\n${JSON.stringify(payload, null, 2)}\n\nΣχήμα απάντησης (συμπλήρωσε ΟΛΑ τα ζητούμενα ID):\n${example}` : 'Δεν υπάρχουν εκκρεμείς εγγραφές σε αυτό το μέρος. Επιλέξτε επόμενο μέρος.' };
+  return { chunkCues, label, promptText: chunkCues.length ? `${generateSystemInstructions(config)}\n\nΔεδομένα:\n${JSON.stringify(payload, null, 2)}\n\nΣχήμα απάντησης (συμπλήρωσε ΟΛΑ τα ζητούμενα ID):\n${example}` : config.chunkSize === 0 ? 'Δεν υπάρχουν εκκρεμείς εγγραφές στο αρχείο.' : 'Δεν υπάρχουν εκκρεμείς εγγραφές σε αυτό το μέρος. Επιλέξτε επόμενο μέρος.' };
 }

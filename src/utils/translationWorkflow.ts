@@ -17,7 +17,7 @@ export function qualityIssues(cue: SubtitleCue, maxChars = 38): string[] {
 }
 
 export function getBatch(cues: SubtitleCue[], config: PromptConfig) {
-  const size = config.chunkSize > 0 ? config.chunkSize : 50;
+  const size = config.chunkSize === 0 ? Math.max(1, cues.length) : config.chunkSize;
   const total = Math.max(1, Math.ceil(cues.length / size));
   const index = Math.min(Math.max(0, config.currentChunkIndex), total - 1);
   const start = index * size;

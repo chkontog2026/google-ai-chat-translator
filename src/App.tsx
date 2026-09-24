@@ -136,7 +136,7 @@ export default function App() {
             setInputText={setInputText}
             onRepair={() => {
               const index = cues.findIndex(c => qualityIssues(c, promptConfig.maxCharsPerLine).length > 0);
-              setPromptConfig(c => ({ ...c, repairOnly: true, currentChunkIndex: index < 0 ? 0 : Math.floor(index / c.chunkSize) }));
+              setPromptConfig(c => ({ ...c, repairOnly: true, currentChunkIndex: index < 0 || c.chunkSize === 0 ? 0 : Math.floor(index / c.chunkSize) }));
               setActiveStep(2);
             }}
             onProceedToEditor={() => setActiveStep(4)}

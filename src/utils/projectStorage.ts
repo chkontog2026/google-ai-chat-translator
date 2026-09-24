@@ -5,7 +5,7 @@ export const STORAGE_KEY = 'subgreek.project.v1';
 export const defaultConfig: PromptConfig = {
   tone: 'natural_spoken', politeness: 'auto', maxCharsPerLine: 38,
   preserveTags: true, preserveBrackets: true, customGlossary: '',
-  chunkSize: 50, currentChunkIndex: 0, repairOnly: false,
+  chunkSize: 0, currentChunkIndex: 0, repairOnly: false,
 };
 export interface ProjectData {
   version: 1; cues: SubtitleCue[]; fileName: string; promptConfig: PromptConfig;
@@ -26,8 +26,8 @@ export function decodeProject(raw: string): ProjectData {
   });
   if (cues.some((c: SubtitleCue, i: number) => i > 0 && c.startSeconds < cues[i - 1].startSeconds)) throw new Error('Λανθασμένη σειρά υποτίτλων.');
   const c = data.promptConfig;
-  if (!['natural_spoken', 'youth_slang', 'formal_doc', 'action_punchy', 'humor_sitcom'].includes(c.tone) || !['auto', 'formal', 'informal'].includes(c.politeness) || ![50, 100, 150].includes(c.chunkSize) || !Number.isInteger(c.currentChunkIndex) || c.currentChunkIndex < 0 || !Number.isInteger(c.maxCharsPerLine) || c.maxCharsPerLine < 20 || c.maxCharsPerLine > 60 || typeof c.customGlossary !== 'string' || typeof c.preserveTags !== 'boolean' || typeof c.preserveBrackets !== 'boolean') throw new Error('Μη έγκυρες ρυθμίσεις εργασίας.');
-  return { version: 1, cues, fileName: data.fileName, promptConfig: { ...defaultConfig, ...c, currentChunkIndex: Math.min(c.currentChunkIndex, Math.max(0, Math.ceil(cues.length / c.chunkSize) - 1)) }, activeStep: [1, 2, 3, 4].includes(data.activeStep) ? data.activeStep : 1, inputText: data.inputText, videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : null };
+  if (!['natural_spoken', 'youth_slang', 'formal_doc', 'action_punchy', 'humor_sitcom'].includes(c.tone) || !['auto', 'formal', 'informal'].includes(c.politeness) || ![0, 50, 100, 150].includes(c.chunkSize) || !Number.isInteger(c.currentChunkIndex) || c.currentChunkIndex < 0 || !Number.isInteger(c.maxCharsPerLine) || c.maxCharsPerLine < 20 || c.maxCharsPerLine > 60 || typeof c.customGlossary !== 'string' || typeof c.preserveTags !== 'boolean' || typeof c.preserveBrackets !== 'boolean') throw new Error('Μη έγκυρες ρυθμίσεις εργασίας.');
+  return { version: 1, cues, fileName: data.fileName, promptConfig: { ...defaultConfig, ...c, currentChunkIndex: c.chunkSize === 0 ? 0 : Math.min(c.currentChunkIndex, Math.max(0, Math.ceil(cues.length / c.chunkSize) - 1)) }, activeStep: [1, 2, 3, 4].includes(data.activeStep) ? data.activeStep : 1, inputText: data.inputText, videoFileName: typeof data.videoFileName === 'string' ? data.videoFileName : null };
 }
 
 export function restoreProject(): { project: ProjectData | null; error: string } {

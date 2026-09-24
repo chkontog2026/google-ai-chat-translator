@@ -61,6 +61,21 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
   return (
     <div className="space-y-6">
       {copyError && <p role="alert" className="text-amber-300 text-sm">{copyError}</p>}
+      <section className="panel space-y-3">
+        <label htmlFor="prompt-scope" className="block text-sm font-semibold">Πόσους υπότιτλους θα στείλουμε στο chat;</label>
+        <select id="prompt-scope" value={config.chunkSize}
+          onChange={e => setConfig({ ...config, chunkSize: Number(e.target.value), currentChunkIndex: 0, repairOnly: false })}
+          className="w-full sm:w-auto bg-slate-950 border border-slate-700 rounded-lg p-2 text-sm text-slate-200">
+          <option value="0">Ολόκληρο το αρχείο — ένα prompt</option>
+          <option value="50">50 υπότιτλοι ανά μέρος</option>
+          <option value="100">100 υπότιτλοι ανά μέρος</option>
+          <option value="150">150 υπότιτλοι ανά μέρος</option>
+        </select>
+        {config.chunkSize === 0 && <p className="text-xs text-slate-300">
+          {config.repairOnly ? 'Το prompt περιλαμβάνει τις εκκρεμείς εγγραφές από όλο το αρχείο.' : `Όλοι οι ${cues.length} υπότιτλοι περιλαμβάνονται στο ίδιο prompt, χωρίς χωρισμό σε μέρη.`}
+          {' '}Σε μεγάλα αρχεία η απάντηση του chat μπορεί να κοπεί. Στο Βήμα 3 ελέγχουμε τις ελλείψεις. Αν η απάντηση είναι πλήρες, έγκυρο JSON, μπορείτε να εφαρμόσετε όσα επέστρεψε και να ζητήσετε συμπλήρωση με «Prompt διόρθωσης / ελλείψεων».
+        </p>}
+      </section>
       {/* Visual Workflow Explainer */}
       <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-900 border border-amber-500/30 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-3">
@@ -182,7 +197,7 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
         {/* Advanced Settings Drawer */}
         {showAdvanced && (
           <div className="pt-4 border-t border-slate-800/80 space-y-4 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-slate-300 font-medium block mb-1">Πληθυντικός / Ενικός:</label>
                 <select
@@ -212,25 +227,6 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
                 <span className="text-[10px] text-slate-400">Πρότυπο cinema: 37-40 χαρακτήρες</span>
               </div>
 
-              <div>
-                <label className="text-slate-300 font-medium block mb-1">Κατάτμηση (Chunks):</label>
-                <select
-                  value={config.chunkSize}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      chunkSize: parseInt(e.target.value, 10),
-                      currentChunkIndex: 0,
-                    })
-                  }
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-amber-500"
-                >
-
-                  <option value="50">50 υπότιτλοι ανά μέρος</option>
-                  <option value="100">100 υπότιτλοι ανά μέρος</option>
-                  <option value="150">150 υπότιτλοι ανά μέρος</option>
-                </select>
-              </div>
             </div>
 
             {/* Custom Glossary */}
@@ -253,7 +249,7 @@ export const ChatPromptGenerator: React.FC<ChatPromptGeneratorProps> = ({
 
       <label className="flex items-center gap-3 bg-slate-900 border border-slate-700 rounded-xl p-4 text-sm">
         <input type="checkbox" checked={!!config.repairOnly} onChange={e => setConfig({ ...config, repairOnly: e.target.checked })} />
-        Μόνο κενές εγγραφές και εγγραφές με προειδοποιήσεις στο επιλεγμένο μέρος
+        Μόνο κενές εγγραφές και εγγραφές με προειδοποιήσεις {config.chunkSize === 0 ? 'σε όλο το αρχείο' : 'στο επιλεγμένο μέρος'}
       </label>
       <p className="text-xs text-slate-400">Η απάντηση θα είναι JSON. Αντιγράψτε ολόκληρο το αποτέλεσμα στο Βήμα 3. Τα ✓ δείχνουν μέρη χωρίς κενά ή προειδοποιήσεις· ο γλωσσικός έλεγχος παραμένει απαραίτητος.</p>
       {/* Chunk navigation if chunking is enabled */}

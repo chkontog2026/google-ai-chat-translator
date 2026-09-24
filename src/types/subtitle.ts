@@ -20,7 +20,7 @@ export interface PromptConfig {
   preserveTags: boolean; // <i>, <b>, etc.
   preserveBrackets: boolean; // [Applause], (laughter)
   customGlossary: string; // e.g. "Shield: Ασπίδα\nTony: Τόνι"
-  chunkSize: number; // 0 for all at once, or 50, 100, 200
+  chunkSize: number; // 0 for the whole file, or 50, 100, 150
   currentChunkIndex: number;
   repairOnly?: boolean;
 }

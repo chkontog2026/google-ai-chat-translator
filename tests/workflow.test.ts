@@ -23,13 +23,43 @@ test('original rejects invalid seconds, reverse durations, duplicate IDs and mal
 });
 test('second batch keeps stable IDs and uses only surrounding context', () => {
   const cues = Array.from({ length: 101 }, (_, i) => ({ ...source()[0], id: i + 1, originalText: `Line ${i + 1}` }));
-  const config = { ...defaultConfig, currentChunkIndex: 1 };
+  const config = { ...defaultConfig, chunkSize: 50, currentChunkIndex: 1 };
   const prompt = generateBatchPrompt(cues, config, 1, 3);
   assert.deepEqual(prompt.chunkCues.map(c => c.id), Array.from({ length: 50 }, (_, i) => i + 51));
   assert.ok(prompt.promptText.includes('"id": 100'));
   assert.ok(prompt.promptText.includes(requestId(cues, prompt.chunkCues)));
   assert.equal(getBatch(cues, config).total, 3);
 });
+test('whole-file mode covers every ID and repairs missing cues beyond the first batch', () => {
+  const cues = Array.from({ length: 2067 }, (_, i) => ({ ...source()[0], id: i + 1, originalText: `Line ${i + 1}` }));
+  const config = { ...defaultConfig, chunkSize: 0, currentChunkIndex: 41 };
+  const batch = getBatch(cues, config);
+  assert.equal(batch.total, 1);
+  assert.equal(batch.index, 0);
+  const prompt = generateBatchPrompt(cues, config, 41, 42);
+  const data = JSON.parse(prompt.promptText.split('Δεδομένα:\n')[1].split('\n\nΣχήμα απάντησης')[0]);
+  assert.deepEqual(data.translate.map((c: any) => c.id), cues.map(c => c.id));
+  assert.deepEqual(data.contextOnly, []);
+  assert.ok(prompt.label.includes('Ολόκληρο το αρχείο • 2067'));
+  const rows = cues.filter(c => c.id !== 2067).map(c => ({ id: c.id, text: 'Γεια.' }));
+  const plan = analyzeTranslation(cues, response(rows, cues), batch.targets);
+  assert.deepEqual(plan.missingIds, [2067]);
+  const merged = applyTranslation(cues, plan);
+  const repair = getBatch(merged, { ...config, repairOnly: true });
+  assert.deepEqual(repair.targets.map(c => c.id), [2067]);
+  assert.equal(merged[0].translatedText, 'Γεια.');
+  assert.equal(merged[2066].startTime, cues[2066].startTime);
+  assert.deepEqual(getBatch([], config), { total: 1, index: 0, start: 0, all: [], targets: [] });
+});
+
+test('whole-file projects restore with a finite index and keep saved batch preferences', () => {
+  const p = { version: 1, cues: source(), fileName: 'test.srt', promptConfig: { ...defaultConfig, chunkSize: 0, currentChunkIndex: 41 }, activeStep: 2, inputText: '', videoFileName: null };
+  assert.equal(decodeProject(JSON.stringify(p)).promptConfig.currentChunkIndex, 0);
+  assert.equal(decodeProject(JSON.stringify({ ...p, cues: [] })).promptConfig.currentChunkIndex, 0);
+  const old = decodeProject(JSON.stringify({ ...p, promptConfig: { ...defaultConfig, chunkSize: 50, currentChunkIndex: 0 } }));
+  assert.equal(old.promptConfig.chunkSize, 50);
+});
+
 test('valid partial JSON accepts known records and reports missing without shifting', () => {
   const cues = source();
   const plan = analyzeTranslation(cues, response([{ id: 52, text: 'Αντίο.' }]), cues);
@@ -101,7 +131,7 @@ test('backup roundtrip preserves progress, review flags and draft response; reje
   const p = { version: 1, cues: source().map(c => ({ ...c, translatedText: 'Γεια.', needsReview: true })), fileName: 'test.srt', promptConfig: defaultConfig, activeStep: 3, inputText: 'unfinished reply', videoFileName: null };
   assert.deepEqual(decodeProject(JSON.stringify(p)), p);
   assert.throws(() => decodeProject(JSON.stringify({ ...p, cues: [p.cues[0], p.cues[0]] })));
-  assert.throws(() => decodeProject(JSON.stringify({ ...p, promptConfig: { ...defaultConfig, chunkSize: 0 } })));
+  assert.throws(() => decodeProject(JSON.stringify({ ...p, promptConfig: { ...defaultConfig, chunkSize: -1 } })));
 });
 
 test('real GMA regression: recover 560 candidates without attaching the ending at minute 41', { skip: !process.env.SRT_TEST_ORIGINAL || !process.env.SRT_TEST_TRANSLATED }, () => {
